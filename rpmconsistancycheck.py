@@ -28,9 +28,10 @@ rpmlist=[]
 filename=""
 parser = OptionParser()
 parser.add_option("-f", "--file", default=None, dest="filename", help='file containing list of rpms')
-parser.add_option("-e", "--errata", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
+parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
+parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='file containing list of rpms belonging to an errata')
 #parser.add_option("-f", "--file", default=None, help='file containing list of rpms')
 
 (opt,args) = parser.parse_args()
@@ -42,8 +43,8 @@ for line in open(opt.filename):
 	rpmlist.append(line.rstrip('\n'))
 
 erratapkgs=[]
-if opt.errata:
-	for line in open(opt.errata):
+for e in opt.errata:
+	for line in open(e):
 		erratapkgs.append(yum.packages.YumLocalPackage(filename=opt.dir+"/"+line.rstrip('\n')))
 
 yb = yum.YumBase()
@@ -51,19 +52,19 @@ yb.setCacheDir()
 
 yb.repos.disableRepo('*')
 
-repolist=[ "fedora-clone","updates-clone" ]
-for repo in repolist:
-	newrepo = yum.yumRepo.YumRepository(repo)
-	newrepo.baseurl = "file:///home/chrisp/projects/prospero/19/"+ repo
+#repolist=[ "fedora-clone","updates-clone" ]
+for repo in opt.repolist:
+	repodetails=repo.split(",")
+	newrepo = yum.yumRepo.YumRepository(repodetails[0])
+	newrepo.baseurl = repodetails[1]
 	newrepo.metadata_expire = 0
 	newrepo.timestamp_check = False
 	yb.repos.add(newrepo)
-	yb.repos.enableRepo(repo)
+	yb.repos.enableRepo(repodetails[0])
 
 yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1) #which='enabled',
 
 pkgobjlist=dict()
-
 for i in yb.pkgSack:
 	#print "%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)
 	pkgobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
@@ -79,7 +80,8 @@ for rpm in rpmlist:
 	instpkgobjs[rpmname.name]=rpmname
 	
 
-### replace any from the errata list that are newer then the installed package that matches 
+### replace any from the errata list that are newer then the installed package that matches e
+#errsack= yum.packageSack.PackageSack()
 for e in erratapkgs:
 	if instpkgobjs.get(e.name) and e.verGT(instpkgobjs[e.name]):
 		instpkgobjs[e.name]=e
@@ -90,8 +92,12 @@ for e in erratapkgs:
 	elif instpkgobjs.get(e.name,"") == "" and opt.installnew:
 		instpkgobjs[e.name]=e
 	else:
-		yb.pkgSack.add(e)
-	
+		yb.pkgSack.addPackage(e)
+		#errsack.addPackage(e)
+
+#yb.repos.add(errsack)
+
+
 try:
 	deps = yb.findDeps(instpkgobjs.values())
 except Exception as e:
@@ -105,7 +111,7 @@ for i in deps.keys():				### packages
 	for j in deps[i].keys():		### requirements for package
 		if deps[i][j] == []:
 			continue
-		
+
 		for k in deps[i][j]:		### potential resolutions for requirements
 			name="%s-%s-%s.%s"%(k.name, k.version, k.release,k.arch)
 			if name in rpmlist:		### there is something installed that satisfies the dep
