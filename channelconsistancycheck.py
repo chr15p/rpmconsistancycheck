@@ -24,7 +24,6 @@ import yum
 from rpmUtils.miscutils import splitFilename
 from optparse import OptionParser
 
-rpmlist=[]
 filename=""
 parser = OptionParser()
 parser.add_option("-m", "--master", default=None, action="append", dest="master", help='master channel containing all rpms')
@@ -44,22 +43,27 @@ if type(opt.errata) == None:
 yb = yum.YumBase()
 yb.setCacheDir()
 yb.repos.disableRepo('*')
-if type(opt.repolist) == None:
-	for repo in opt.repolist:
-		repedetails=repo.split(",")
-		newrepo = yum.yumRepo.YumRepository(repodetails[0])
-		newrepo.baseurl = repodetails[1]
+
+repolist=opt.repolist or []
+for repo in repolist:
+	repodetails=repo.split(",")
+	newrepo = yum.yumRepo.YumRepository(repodetails[0])
+	newrepo.baseurl = repodetails[1]
+	yb.repos.add(newrepo)
+	yb.repos.enableRepo(repodetails[0])
 
 yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1) #which='enabled',
 repopkgobjs = dict()
 for i in yb.pkgSack.returnPackages():
 	repopkgobjs[i.name]=i
+	#print "%s=%s"%(i.name,i)
 	
-
+#print repopkgobjs
 yb.repos.disableRepo('*')
 
 #repolist=[ "fedora-clone","updates-clone" ]
-for repo in opt.master:
+master = opt.master  or [] 
+for repo in master:
 	repodetails=repo.split(",")
 	newrepo = yum.yumRepo.YumRepository(repodetails[0])
 	newrepo.baseurl =repodetails[1] #"file:///home/chrisp/projects/prospero/19/fedora-clone/"
@@ -84,7 +88,7 @@ for e in erratapkgs:
 	elif repopkgobjs.get(e.name,"") == "" and opt.installnew:
 		repopkgobjs[e.name]=e
 	else:
-		yb.pkgSack.add(e)
+		yb.pkgSack.addPackage(e)
 	
 try:
 	deps = yb.findDeps(repopkgobjs.values())
@@ -94,6 +98,9 @@ except Exception as e:
 	print e
 	sys.exit(0)
 
+#print deps
+#sys.exit(0)
+
 pkgs=dict()
 for i in deps.keys():				### packages
 	for j in deps[i].keys():		### requirements for package
@@ -102,7 +109,7 @@ for i in deps.keys():				### packages
 		
 		for k in deps[i][j]:		### potential resolutions for requirements
 			name="%s-%s-%s.%s"%(k.name, k.version, k.release,k.arch)
-			if name in rpmlist:		### there is something installed that satisfies the dep
+			if name in repopkgobjs.values():		### there is something installed that satisfies the dep
 				break
 			#elif pkgobjlist.get(name,"") != "":	### there is something in the repo that satisfies the dep
 			#	break
