@@ -53,11 +53,11 @@ for repo in repolist:
 	yb.repos.enableRepo(repodetails[0])
 
 yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1) #which='enabled',
-repopkgobjs = dict()
+
+repopkgobjs=dict()
 for i in yb.pkgSack.returnPackages():
-	repopkgobjs[i.name]=i
-	#print "%s=%s"%(i.name,i)
-	
+	repopkgobjs[i]=1
+
 #print repopkgobjs
 yb.repos.disableRepo('*')
 
@@ -75,51 +75,46 @@ for repo in master:
 yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1) #which='enabled',
 #print yb.pkgSack.returnPackages()
 #sys.exit(0)
-
-
-### replace any from the errata list that are newer then the installed package that matches 
 for e in erratapkgs:
-	if repopkgobjs.get(e.name) and e.verGT(repopkgobjs[e.name]):
-		repopkgobjs[e.name]=e
-	elif repopkgobjs.get(e.name) and e.verLT(repopkgobjs[e.name]):
-		print "%s-%s-%s.%s older then installed"%(e.name, e.version, e.release,e.arch)
-	elif repopkgobjs.get(e.name) and e.verEQ(repopkgobjs[e.name]):
-		print "%s-%s-%s.%s already installed"%(e.name, e.version, e.release,e.arch)
-	elif repopkgobjs.get(e.name,"") == "" and opt.installnew:
-		repopkgobjs[e.name]=e
+	if repopkgobjs.get(e):
+		print "%s-%s-%s.%s already in repos"%(e.name, e.version, e.release,e.arch)
 	else:
-		yb.pkgSack.addPackage(e)
-	
+		repopkgobjs[e]=1
+
+#print "a"
+
 try:
-	deps = yb.findDeps(repopkgobjs.values())
+	deps = yb.findDeps(repopkgobjs.keys())
 except Exception as e:
-	for i in repopkgobjs.values():
-		print "%s=%s"%(i,type(i))
+	#for i in repopkgobjs.values():
+	#	print "%s=%s"%(i,type(i))
 	print e
 	sys.exit(0)
 
+#print "b"
 #print deps
 #sys.exit(0)
 
 pkgs=dict()
 for i in deps.keys():				### packages
+	#print i.name
+	#print deps[i]
+	#sys.exit(0)
 	for j in deps[i].keys():		### requirements for package
-		if deps[i][j] == []:
+		if deps[i][j] == []:		### no dependancies required
 			continue
-		
+	
+		#print "======" + i.name 
+		#print deps[i][j]	
 		for k in deps[i][j]:		### potential resolutions for requirements
-			name="%s-%s-%s.%s"%(k.name, k.version, k.release,k.arch)
-			if name in repopkgobjs.values():		### there is something installed that satisfies the dep
+			if repopkgobjs.get(k):
+				#print k
 				break
-			#elif pkgobjlist.get(name,"") != "":	### there is something in the repo that satisfies the dep
-			#	break
-		else:						### there is nothing available anywhere that satisfies the dep
-			print "%s-%s-%s.%s requires %s"%(i.name, i.version, i.release,i.arch," ".join([m.name for m in deps[i][j]]))
-			pkgs[name]=1
-
-print "================"
-for i in pkgs.keys():
-	print i
+		else:
+			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
+			for m in deps[i][j]:
+				print "\t%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch)
+				
 
 
 sys.exit(0)
