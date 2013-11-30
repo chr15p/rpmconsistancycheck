@@ -18,6 +18,7 @@
 import os
 import sys
 import yum
+import rpmUtils.transaction
 from rpmUtils.miscutils import splitFilename
 from optparse import OptionParser
 
@@ -28,6 +29,7 @@ parser.add_option("-f", "--file", default=None, dest="filename", help='file cont
 parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
+parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
 
 (opt,args) = parser.parse_args()
 filename = opt.filename or sys.exit(1)
@@ -40,10 +42,11 @@ rpmdir = opt.dir or "."
 for line in open(filename):
 	rpmlist.append(line.rstrip('\n'))
 
+ts = rpmUtils.transaction.initReadOnlyTransaction()
 erratapkgs=[]
 for e in errata:
 	for line in open(e):
-		erratapkgs.append(yum.packages.YumLocalPackage(filename=rpmdir+"/"+line.rstrip('\n')))
+		erratapkgs.append(yum.packages.YumLocalPackage(filename=rpmdir+"/"+line.rstrip('\n'),ts=ts))
 
 yb = yum.YumBase()
 yb.setCacheDir("/var/cache/yum/")
@@ -75,7 +78,7 @@ for i in yb.pkgSack:
 instpkgobjs = dict()
 for rpmname in rpmlist:
 	#print rpm
-	rpm = pkgobjlist.get(rpm,"")
+	rpm = pkgobjlist.get(rpmname,"")
 	if rpm =="":
 		try:
 			rpm = yum.packages.YumLocalPackage(filename= rpmdir + "/" + rpmname + ".rpm")
@@ -102,8 +105,8 @@ for e in erratapkgs:
 
 try:
 	deps = yb.findDeps(instpkgobjs.keys())
-except Exception as e:
-	print e
+except Exception , e:
+	print e.value
 	sys.exit(0)
 
 for i in deps.keys():				### packages
@@ -116,6 +119,6 @@ for i in deps.keys():				### packages
 				break
 		else:
 			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
-			print "\t" + "\t\n".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in instpkgobjs])
+			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
 				
 sys.exit(0)
