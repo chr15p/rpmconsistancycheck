@@ -22,39 +22,85 @@ import rpmUtils.transaction
 from rpmUtils.miscutils import splitFilename
 from optparse import OptionParser
 
+def parsePkgFile(filename):
+	pkglist = []
+	for line in open(filename):
+		pkgname=line.rstrip('\n')
+		if pkgname[-4:] == ".rpm":
+			pkglist.append(line[:-5])
+		else:
+			pkglist.append(line)
+	return pkglist
+
+
+def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
+	instpkgobjs = dict()
+	for name in namelist:
+		#print rpm
+		obj = pkgobjlist.get(name,"")
+		if obj =="":
+			try:
+				obj = yum.packages.YumLocalPackage(filename= rpmdir + "/" + name + ".rpm",ts=ts)
+			except:
+				print "NOT FOUND IN REPOs: " +name
+				continue
+
+		instpkgobjs[rpm]=1
+
+	return instpkgobjs
+
+
+def mergeErrata(objdict, errataobj,installnew):
+	for e in errataobj:
+		if objdict.get(e):
+			if e.verGT(objdict[e]):
+				objdict[e] = errataobj[e]
+			elif e.verLT(objdict[e]):
+				print "%s-%s-%s.%s older then installed"%(e.name, e.version, e.release,e.arch)
+			elif e.verEQ(objdict[e]):
+				print "%s-%s-%s.%s already installed"%(e.name, e.version, e.release,e.arch)
+		elif installnew:
+			objdict[e]=errataobj[e]
+
+
+def filterNewest(objdict):
+	namecache = dict()
+	for e in objdict:
+		name = e.name
+		if namecache.get(name):
+			if e.verGT(namecache[e]):
+				namecache[e.name] = e
+		else:
+			namecache[e.name] = e
+
+	return [(e,1) for e in namecache]
+
+
 rpmlist=[]
 filename=""
 parser = OptionParser()
-parser.add_option("-f", "--file", default=None, dest="filename", help='file containing list of rpms to check')
+parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
 parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
 parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
+parser.add_option("-n", "--newest", default=None, action="store_const",const=1, dest="newest", help='only check newest versions of packages')
 
 (opt,args) = parser.parse_args()
-filename = opt.filename or sys.exit(1)
+filenames = opt.filename or sys.exit(1)
 repolist = opt.repolist or sys.exit(1)
+installnew = opt.installnew 
 errata = opt.errata or ""
 rpmdir = opt.dir or "."
 
-## read the rpms from a file
-#rpmlist = [line.rstrip('\n') for line in open(opt.filename)]
-for line in open(filename):
-	rpmlist.append(line.rstrip('\n'))
 
 ts = rpmUtils.transaction.initReadOnlyTransaction()
-erratapkgs=[]
-for e in errata:
-	for line in open(e):
-		erratapkgs.append(yum.packages.YumLocalPackage(filename=rpmdir+"/"+line.rstrip('\n'),ts=ts))
-
 yb = yum.YumBase()
-yb.setCacheDir("/var/cache/yum/")
+yb.setCacheDir()
 
 conrepos=[]
 for i in yb.repos.findRepos("*"):
 	conrepos.append(i.getAttribute("id"))
-
 
 yb.repos.disableRepo('*')
 
@@ -68,46 +114,37 @@ for repo in repolist:
 	
 	yb.repos.enableRepo(repo)
 
-yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1) #which='enabled',
+yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1,which='enabled')
 
 pkgobjlist=dict()
 for i in yb.pkgSack:
-	#print "%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)
 	pkgobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
 
-instpkgobjs = dict()
-for rpmname in rpmlist:
-	#print rpm
-	rpm = pkgobjlist.get(rpmname,"")
-	if rpm =="":
-		try:
-			rpm = yum.packages.YumLocalPackage(filename= rpmdir + "/" + rpmname + ".rpm")
-		except:
-			print "NOT FOUND IN REPOs: " +rpmname
-			continue
-	#instpkgobjs.append(rpmname)
-	instpkgobjs[rpm]=1
+
+## read the rpms from a file
+
+rpmobjs = dict()
+for filename in filenames:
+	rpmlist = parsePkgFile(filename)
+	rpmobjs.update(getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts))
+
+erratapkgobjs = dict()
+for err in errata:
+	erratapkgs = parsePkgFile(err)
+	erratapkgobjs.update(getPkgObjs(erratapkgs,pkgobjlist,rpmdir,ts))
 
 
+mergeErrata(rpmobjs, erratapkgobjs, installnew)
 
-### replace any from the errata list that are newer then the installed package that matches e
-for e in erratapkgs:
-	if instpkgobjs.get(e) and e.verGT(instpkgobjs[e]):
-		instpkgobjs[e]=1
-	elif instpkgobjs.get(e) and e.verLT(instpkgobjs[e]):
-		print "%s-%s-%s.%s older then installed"%(e.name, e.version, e.release,e.arch)
-	elif instpkgobjs.get(e) and e.verEQ(instpkgobjs[e]):
-		print "%s-%s-%s.%s already installed"%(e.name, e.version, e.release,e.arch)
-	elif instpkgobjs.get(e,"") == "" and opt.installnew:
-		instpkgobjs[e]=1
-	else:
-		yb.pkgSack.addPackage(e)
+if opt.newest:
+	filterNewest(rpmobjs)
 
 try:
-	deps = yb.findDeps(instpkgobjs.keys())
+	deps = yb.findDeps(rpmobjs.keys())
 except Exception , e:
 	print e.value
 	sys.exit(0)
+
 
 for i in deps.keys():				### packages
 	for j in deps[i].keys():		### requirements for package
