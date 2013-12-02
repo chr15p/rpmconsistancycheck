@@ -26,10 +26,12 @@ def parsePkgFile(filename):
 	pkglist = []
 	for line in open(filename):
 		pkgname=line.rstrip('\n')
+		if pkgname == "" continue
+
 		if pkgname[-4:] == ".rpm":
-			pkglist.append(line[:-5])
+			pkglist.append(pkgname[:-4])
 		else:
-			pkglist.append(line)
+			pkglist.append(pkgname)
 	return pkglist
 
 
@@ -68,7 +70,7 @@ def filterNewest(objdict):
 	for e in objdict:
 		name = e.name
 		if namecache.get(name):
-			if e.verGT(namecache[e]):
+			if e.verGT(namecache[name]):
 				namecache[e.name] = e
 		else:
 			namecache[e.name] = e
@@ -152,7 +154,7 @@ for i in deps.keys():				### packages
 			continue
 
 		for k in deps[i][j]:		### potential resolutions for requirements
-			if instpkgobjs.get(k):
+			if rpmpbjs.get(k):
 				break
 		else:
 			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
