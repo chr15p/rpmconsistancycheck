@@ -26,7 +26,7 @@ def parsePkgFile(filename):
 	pkglist = []
 	for line in open(filename):
 		pkgname=line.rstrip('\n')
-		if pkgname == "" continue
+		if pkgname == "": continue
 
 		if pkgname[-4:] == ".rpm":
 			pkglist.append(pkgname[:-4])
@@ -47,7 +47,7 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 				print "NOT FOUND IN REPOs: " +name
 				continue
 
-		instpkgobjs[rpm]=1
+		instpkgobjs[name]=1
 
 	return instpkgobjs
 
@@ -82,7 +82,7 @@ rpmlist=[]
 filename=""
 parser = OptionParser()
 parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
-parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
+#parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
 parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
@@ -92,7 +92,7 @@ parser.add_option("-n", "--newest", default=None, action="store_const",const=1, 
 filenames = opt.filename or sys.exit(1)
 repolist = opt.repolist or sys.exit(1)
 installnew = opt.installnew 
-errata = opt.errata or ""
+#errata = opt.errata or ""
 rpmdir = opt.dir or "."
 
 
@@ -128,15 +128,15 @@ for i in yb.pkgSack:
 rpmobjs = dict()
 for filename in filenames:
 	rpmlist = parsePkgFile(filename)
-	rpmobjs.update(getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts))
+	#rpmobjs.update(getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts))
+	mergeErrata(rpmobjs, getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts), installnew)
 
-erratapkgobjs = dict()
-for err in errata:
-	erratapkgs = parsePkgFile(err)
-	erratapkgobjs.update(getPkgObjs(erratapkgs,pkgobjlist,rpmdir,ts))
-
-
-mergeErrata(rpmobjs, erratapkgobjs, installnew)
+#erratapkgobjs = dict()
+#for err in errata:
+#	erratapkgs = parsePkgFile(err)
+#	erratapkgobjs.update(getPkgObjs(erratapkgs,pkgobjlist,rpmdir,ts))
+#
+#mergeErrata(rpmobjs, erratapkgobjs, installnew)
 
 if opt.newest:
 	filterNewest(rpmobjs)
