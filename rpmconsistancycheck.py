@@ -53,16 +53,25 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 
 
 def mergeErrata(objdict, errataobj,installnew):
+
+	erratanamedict=dict()
 	for e in errataobj:
-		if objdict.get(e):
-			if e.verGT(objdict[e]):
-				objdict[e] = errataobj[e]
-			elif e.verLT(objdict[e]):
-				print "%s-%s-%s.%s older then installed"%(e.name, e.version, e.release,e.arch)
-			elif e.verEQ(objdict[e]):
-				print "%s-%s-%s.%s already installed"%(e.name, e.version, e.release,e.arch)
-		elif installnew:
-			objdict[e]=errataobj[e]
+		erratanamedict[e.name]=e
+
+	for j in objdict:
+		newobj=erratanamedict.get(j.name,"")
+		if newobj != "":
+			if newobj.verGT(objdict[j]):
+				objdict[j] = newobj
+			elif newobj.verLT(objdict[j]):
+				print "%s-%s-%s.%s older then installed"%(newobj.name, newobj.version, newobj.release,newobj.arch)
+			elif newobj.verEQ(objdict[j]):
+				print "%s-%s-%s.%s already installed"%(newobj.name, newobj.version, newobj.release,newobj.arch)
+		del erratanamedict[j.name]
+
+	if installnew:
+		objdict.update(erratanamedict)
+
 
 
 def filterNewest(objdict):
@@ -82,7 +91,6 @@ rpmlist=[]
 filename=""
 parser = OptionParser()
 parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
-#parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of rpms belonging to an errata')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
 parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
@@ -92,7 +100,6 @@ parser.add_option("-n", "--newest", default=None, action="store_const",const=1, 
 filenames = opt.filename or sys.exit(1)
 repolist = opt.repolist or sys.exit(1)
 installnew = opt.installnew 
-#errata = opt.errata or ""
 rpmdir = opt.dir or "."
 
 
@@ -106,7 +113,6 @@ for i in yb.repos.findRepos("*"):
 
 yb.repos.disableRepo('*')
 
-#repolist=[ "fedora-clone","updates-clone" ]
 for repo in repolist:
 	if repo not in conrepos:
 		newrepo = yum.yumRepo.YumRepository(repo)
@@ -128,15 +134,7 @@ for i in yb.pkgSack:
 rpmobjs = dict()
 for filename in filenames:
 	rpmlist = parsePkgFile(filename)
-	#rpmobjs.update(getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts))
 	mergeErrata(rpmobjs, getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts), installnew)
-
-#erratapkgobjs = dict()
-#for err in errata:
-#	erratapkgs = parsePkgFile(err)
-#	erratapkgobjs.update(getPkgObjs(erratapkgs,pkgobjlist,rpmdir,ts))
-#
-#mergeErrata(rpmobjs, erratapkgobjs, installnew)
 
 if opt.newest:
 	filterNewest(rpmobjs)
