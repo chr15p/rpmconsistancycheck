@@ -47,7 +47,7 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 				print "NOT FOUND IN REPOs: " +name
 				continue
 
-		instpkgobjs[name]=1
+		instpkgobjs[obj]=1
 
 	return instpkgobjs
 
@@ -154,7 +154,7 @@ for i in deps.keys():				### packages
 			continue
 
 		for k in deps[i][j]:		### potential resolutions for requirements
-			if rpmpbjs.get(k):
+			if rpmobjs.get(k):
 				break
 		else:
 			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
