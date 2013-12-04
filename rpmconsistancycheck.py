@@ -45,6 +45,7 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 				obj = yum.packages.YumLocalPackage(filename= rpmdir + "/" + name + ".rpm",ts=ts)
 			except:
 				print "NOT FOUND IN REPOs: " +name
+				errval=1
 				continue
 
 		instpkgobjs[obj]=1
@@ -89,6 +90,7 @@ def filterNewest(objdict):
 
 rpmlist=[]
 filename=""
+errval=0
 parser = OptionParser()
 parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
@@ -157,5 +159,6 @@ for i in deps.keys():				### packages
 		else:
 			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
 			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
+			errval=1
 				
-sys.exit(0)
+sys.exit(errval)
