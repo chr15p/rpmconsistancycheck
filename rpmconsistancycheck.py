@@ -45,7 +45,7 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 				obj = yum.packages.YumLocalPackage(filename= rpmdir + "/" + name + ".rpm",ts=ts)
 			except:
 				print "NOT FOUND IN REPOs: " +name
-				errval=1
+				errval=3
 				continue
 
 		instpkgobjs[obj]=1
@@ -54,24 +54,21 @@ def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
 
 
 def mergeErrata(objdict, errataobj,installnew):
+	namecache = dict()
+	for i in errataobj:
+		namecache[i.name + " " + i.arch]= i
 
-	erratanamedict=dict()
-	for e in errataobj:
-		erratanamedict[e.name]=e
-
-	for j in objdict:
-		newobj=erratanamedict.get(j.name,"")
-		if newobj != "":
-			if newobj.verGT(objdict[j]):
-				objdict[j] = newobj
-			elif newobj.verLT(objdict[j]):
-				print "%s-%s-%s.%s older then installed"%(newobj.name, newobj.version, newobj.release,newobj.arch)
-			elif newobj.verEQ(objdict[j]):
-				print "%s-%s-%s.%s already installed"%(newobj.name, newobj.version, newobj.release,newobj.arch)
-		del erratanamedict[j.name]
+	for e in objdict:
+		name = e.name + " " + e.arch
+		if namecache.get(name):
+			if e.verGT(namecache[name]):
+				namecache[e.name] = errataobj[e]
+	
+			del namecache[name]
 
 	if installnew:
-		objdict.update(erratanamedict)
+		for i in namecache.keys():
+			objdict[namecache[name]] = errataobj[e]
 
 
 
@@ -85,7 +82,7 @@ def filterNewest(objdict):
 		else:
 			namecache[e.name] = e
 
-	return [(e,1) for e in namecache]
+	return dict((e,1) for e in namecache)
 
 
 rpmlist=[]
@@ -139,12 +136,14 @@ for filename in filenames:
 	mergeErrata(rpmobjs, getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts), installnew)
 
 if opt.newest:
-	filterNewest(rpmobjs)
+	usablerpmobjs=filterNewest(rpmobjs)
+else:
+	usablerpmobjs=rpmobjs
 
 try:
-	deps = yb.findDeps(rpmobjs.keys())
+	deps = yb.findDeps(useablerpmobjs.keys())
 except Exception , e:
-	print e.value
+	print e
 	sys.exit(0)
 
 
@@ -154,11 +153,22 @@ for i in deps.keys():				### packages
 			continue
 
 		for k in deps[i][j]:		### potential resolutions for requirements
-			if rpmobjs.get(k):
+			if useablerpmobjs.get(k):
 				break
 		else:
-			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
-			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
-			errval=1
+			if installnew:
+				for k in deps[i][j]:		### potential resolutions for requirements in the *old* packages
+					if rpmobjs.get(k):
+						print "%s-%s-%s.%s requires an older version of package %s"%(i.name, i.version, i.release,i.arch, k.name)
+						errval = 2
+						break
+				else:
+					print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
+					print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
+					errval=1
+			else:
+				print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
+				print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
+				errval=1
 				
 sys.exit(errval)
