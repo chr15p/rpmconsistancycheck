@@ -35,54 +35,20 @@ def parsePkgFile(filename):
 	return pkglist
 
 
-def getPkgObjs(namelist,pkgobjlist,rpmdir,ts):
-	instpkgobjs = dict()
-	for name in namelist:
-		#print rpm
-		obj = pkgobjlist.get(name,"")
-		if obj =="":
-			try:
-				obj = yum.packages.YumLocalPackage(filename= rpmdir + "/" + name + ".rpm",ts=ts)
-			except:
-				print "NOT FOUND IN REPOs: " +name
-				errval=3
-				continue
-
-		instpkgobjs[obj]=1
-
-	return instpkgobjs
-
-
-def mergeErrata(objdict, errataobj,installnew):
-	namecache = dict()
-	for i in errataobj:
-		namecache[i.name + " " + i.arch]= i
-
-	for e in objdict:
-		name = e.name + " " + e.arch
-		if namecache.get(name):
-			if e.verGT(namecache[name]):
-				namecache[e.name] = errataobj[e]
-	
-			del namecache[name]
-
-	if installnew:
-		for i in namecache.keys():
-			objdict[namecache[name]] = errataobj[e]
-
-
-
-def filterNewest(objdict):
-	namecache = dict()
-	for e in objdict:
-		name = e.name
-		if namecache.get(name):
-			if e.verGT(namecache[name]):
-				namecache[e.name] = e
+def getPackageList(rpmlist,pkgobjlist):
+	pkgList=[]
+	#print pkgobjlist
+	#print rpmlist
+	for i in rpmlist:
+		obj = pkgobjlist.get(i,"")
+		if obj != "":
+			pkgList.append(obj)
 		else:
-			namecache[e.name] = e
+			print "NOT FOUND IN REPOs: " + i
 
-	return dict((e,1) for e in namecache)
+	#print pkgList
+	return pkgList		
+
 
 
 rpmlist=[]
@@ -129,19 +95,18 @@ for i in yb.pkgSack:
 
 
 ## read the rpms from a file
+testsack = yum.packageSack.MetaSack()
 
-rpmobjs = dict()
 for filename in filenames:
 	rpmlist = parsePkgFile(filename)
-	mergeErrata(rpmobjs, getPkgObjs(rpmlist,pkgobjlist,rpmdir,ts), installnew)
-
-if opt.newest:
-	usablerpmobjs=filterNewest(rpmobjs)
-else:
-	usablerpmobjs=rpmobjs
+	rpmobjlist = getPackageList(rpmlist,pkgobjlist)
+	testsack.addSack(filename,yum.packageSack.ListPackageSack(rpmobjlist))
 
 try:
-	deps = yb.findDeps(useablerpmobjs.keys())
+	if opt.newest:
+		deps = yb.findDeps(testsack.returnNewestByName())
+	else:
+		deps = yb.findDeps(testsack.returnPackages())
 except Exception , e:
 	print e
 	sys.exit(0)
@@ -153,22 +118,11 @@ for i in deps.keys():				### packages
 			continue
 
 		for k in deps[i][j]:		### potential resolutions for requirements
-			if useablerpmobjs.get(k):
+			if testsack.searchPO(k):
 				break
 		else:
-			if installnew:
-				for k in deps[i][j]:		### potential resolutions for requirements in the *old* packages
-					if rpmobjs.get(k):
-						print "%s-%s-%s.%s requires an older version of package %s"%(i.name, i.version, i.release,i.arch, k.name)
-						errval = 2
-						break
-				else:
-					print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
-					print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
-					errval=1
-			else:
-				print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
-				print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
-				errval=1
+			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
+			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
+			errval=1
 				
 sys.exit(errval)
