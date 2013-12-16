@@ -95,12 +95,13 @@ for i in yb.pkgSack:
 
 
 ## read the rpms from a file
-testsack = yum.packageSack.MetaSack()
+testsack = yum.packageSack.PackageSack()
 
 for filename in filenames:
 	rpmlist = parsePkgFile(filename)
 	rpmobjlist = getPackageList(rpmlist,pkgobjlist)
-	testsack.addSack(filename,yum.packageSack.ListPackageSack(rpmobjlist))
+	for i in rpmobjlist:
+		testsack.addPackage(i)
 
 try:
 	if opt.newest:
