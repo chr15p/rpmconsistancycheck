@@ -103,11 +103,16 @@ for filename in filenames:
 	for i in rpmobjlist:
 		testsack.addPackage(i)
 
+outputsack = yum.packageSack.PackageSack()
 try:
 	if opt.newest:
-		deps = yb.findDeps(testsack.returnNewestByName())
+		pkgset=testsack.returnNewestByNameArch()
+		deps = yb.findDeps(pkgset)
+		for i in rpmobjlist:
+			outputsack.addPackage(i)
 	else:
 		deps = yb.findDeps(testsack.returnPackages())
+		outputsacksack=testsack
 except Exception , e:
 	print e
 	sys.exit(0)
@@ -120,7 +125,7 @@ for i in deps.keys():				### packages
 			continue
 
 		for k in deps[i][j]:		### potential resolutions for requirements
-			if testsack.searchPO(k):
+			if outputsack.searchPO(k):
 				break
 		else:
 			pkgs["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=1
