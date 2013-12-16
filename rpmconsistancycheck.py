@@ -113,6 +113,7 @@ except Exception , e:
 	sys.exit(0)
 
 
+pkgs=dict()
 for i in deps.keys():				### packages
 	for j in deps[i].keys():		### requirements for package
 		if deps[i][j] == []:		### no requirements
@@ -122,8 +123,13 @@ for i in deps.keys():				### packages
 			if testsack.searchPO(k):
 				break
 		else:
+			pkgs["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=1
 			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
 			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
 			errval=1
-				
+
+if errval !=0:
+	print "%s packages need attention"%(len(pkgs))
+	print "\n".join(pkgs.keys())
+
 sys.exit(errval)
