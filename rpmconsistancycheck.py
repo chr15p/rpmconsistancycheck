@@ -87,7 +87,7 @@ for repo in repolist:
 	
 	yb.repos.enableRepo(repo)
 
-yb.pkgSack = yb.repos.populateSack(mdtype='metadata',cacheonly=1,which='enabled')
+yb.pkgSack = yb.repos.populateSack(which='enabled')
 
 pkgobjlist=dict()
 for i in yb.pkgSack:
@@ -128,13 +128,14 @@ for i in deps.keys():				### packages
 			if outputsack.searchPO(k):
 				break
 		else:
-			pkgs["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=1
-			print "%s-%s-%s.%s requires one of:"%(i.name, i.version, i.release,i.arch)
-			print "\t" + "\n\t".join(["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]])
+			pkgs["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]]
 			errval=1
 
 if errval !=0:
 	print "%s packages need attention"%(len(pkgs))
-	print "\n".join(pkgs.keys())
+	#print "\n".join(pkgs.keys())
+	for i in pkgs.keys():
+		print "%s requires one of:"%(i)
+		print "\t" + "\n\t".join(pkgs[i])
 
 sys.exit(errval)
