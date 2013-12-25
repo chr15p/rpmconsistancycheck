@@ -63,7 +63,7 @@ parser.add_option("-n", "--newest", default=None, action="store_const",const=1, 
 
 (opt,args) = parser.parse_args()
 filenames = opt.filename or sys.exit(1)
-repolist = opt.repolist or sys.exit(1)
+repolist = opt.repolist or []
 installnew = opt.installnew 
 rpmdir = opt.dir or "."
 
@@ -72,20 +72,22 @@ ts = rpmUtils.transaction.initReadOnlyTransaction()
 yb = yum.YumBase()
 yb.setCacheDir()
 
-conrepos=[]
-for i in yb.repos.findRepos("*"):
-	conrepos.append(i.getAttribute("id"))
+if len(repolist) > 0:
+	conrepos=[]
+	for i in yb.repos.findRepos("*"):
+		conrepos.append(i.getAttribute("id"))
 
-yb.repos.disableRepo('*')
+	yb.repos.disableRepo('*')
 
-for repo in repolist:
-	if repo not in conrepos:
-		newrepo = yum.yumRepo.YumRepository(repo)
-		newrepo.metadata_expire = 0
-		newrepo.timestamp_check = False
-		yb.repos.add(newrepo)
+	for repo in repolist:
+		if repo not in conrepos:
+			newrepo = yum.yumRepo.YumRepository(repo)
+			newrepo.metadata_expire = 0
+			newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
+			newrepo.timestamp_check = False
+			yb.repos.add(newrepo)
 	
-	yb.repos.enableRepo(repo)
+		yb.repos.enableRepo(repo)
 
 yb.pkgSack = yb.repos.populateSack(which='enabled')
 
@@ -108,7 +110,7 @@ try:
 	if opt.newest:
 		pkgset=testsack.returnNewestByNameArch()
 		deps = yb.findDeps(pkgset)
-		for i in rpmobjlist:
+		for i in pkgset:
 			outputsack.addPackage(i)
 	else:
 		deps = yb.findDeps(testsack.returnPackages())
@@ -137,5 +139,7 @@ if errval !=0:
 	for i in pkgs.keys():
 		print "%s requires one of:"%(i)
 		print "\t" + "\n\t".join(pkgs[i])
+		#print i+"="+ str(pkgs[i])
+
 
 sys.exit(errval)
