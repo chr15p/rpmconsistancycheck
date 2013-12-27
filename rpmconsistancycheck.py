@@ -81,9 +81,12 @@ if len(repolist) > 0:
 
 	for repo in repolist:
 		if repo not in conrepos:
-			newrepo = yum.yumRepo.YumRepository(repo)
+			r = repo.split(',',1)
+			newrepo = yum.yumRepo.YumRepository(r[0])
 			newrepo.metadata_expire = 0
-			newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
+			if len(r) == 2:
+				#newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
+				newrepo.baseurl=r[1]
 			newrepo.timestamp_check = False
 			yb.repos.add(newrepo)
 	
