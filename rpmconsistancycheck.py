@@ -22,36 +22,97 @@ import rpmUtils.transaction
 from rpmUtils.miscutils import splitFilename
 from optparse import OptionParser
 
-def parsePkgFile(filename):
-	pkglist = []
-	for line in open(filename):
-		pkgname=line.rstrip('\n')
-		if pkgname == "": continue
+class ConsistancyChecker:
+	def __init__(self,repolist):
+		ts = rpmUtils.transaction.initReadOnlyTransaction()
+		self.yb = yum.YumBase()
+		self.yb.setCacheDir()
 
-		if pkgname[-4:] == ".rpm":
-			pkglist.append(pkgname[:-4])
-		else:
-			pkglist.append(pkgname)
-	return pkglist
+		if len(repolist) > 0:
+			self.yb.repos.disableRepo('*')
+			for repo in repolist:
+				addRepos(self.yb,repo)
+
+		self.yb.pkgSack = self.yb.repos.populateSack(which='enabled')
+		self.repoobjlist=dict()
+		for i in self.yb.pkgSack:
+			self.repoobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
+
+		self.testsack = yum.packageSack.PackageSack()
+
+	def getTestSack(self):
+		return self.testsack
+
+	def addRepos(self,repo):
+		r = repo.split(',',1)
+		if not self.yb.repos.findRepos(r[0]):
+			newrepo = yum.yumRepo.YumRepository(r[0])
+			newrepo.metadata_expire = 0
+			if len(r) == 2:
+				#newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
+				newrepo.baseurl=r[1]
+			newrepo.timestamp_check = False
+			self.yb.repos.add(newrepo)
+
+		self.yb.repos.enableRepo(r[0])
 
 
-def getPackageList(rpmlist,pkgobjlist):
-	pkgList=[]
-	#print pkgobjlist
-	#print rpmlist
-	for i in rpmlist:
-		obj = pkgobjlist.get(i,"")
-		if obj != "":
-			pkgList.append(obj)
-		else:
-			print "NOT FOUND IN REPOs: " + i
-
-	#print pkgList
-	return pkgList		
+	def buildTestSack(self,filelist):
+		for filename in filelist:
+			rpmlist = self.parsePkgFile(filename)
+			for i in rpmlist:
+				obj = self.repoobjlist.get(i,"")
+				if obj != "":
+					self.testsack.addPackage(obj)
+				else:
+					print "NOT FOUND IN REPOs: " + i
+		return self.testsack
 
 
+	def parsePkgFile(self,filename):
+		pkglist = []
+		for line in open(filename):
+			pkgname=line.rstrip('\n')
+			if pkgname == "": continue
 
-rpmlist=[]
+			if pkgname[-4:] == ".rpm":
+				pkglist.append(pkgname[:-4])
+			else:
+				pkglist.append(pkgname)
+		return pkglist
+
+	def removeOld(self):
+		self.testsack = self.testsack.returnNewestByNameArch()
+
+	def getNewest(self):
+		return yum.packageSack.ListPackageSack(Objlist=self.testsack.returnNewestByNameArch())
+
+	def getDeps(self,sack):
+		try:
+			deps = self.yb.findDeps(sack)
+		except Exception , e:
+			print e
+			sys.exit(0)
+
+		return deps
+
+	def missingDeps(self,deps,outputsack):
+		pkgs=dict()
+		for i in deps.keys():				### packages
+			for j in deps[i].keys():		### requirements for package
+				if deps[i][j] == []:		### no requirements
+					continue
+
+				for k in deps[i][j]:        ### potential resolutions for requirements
+					if outputsack.searchPO(k):
+						break
+				else:
+					tmpsack = yum.packageSack.ListPackageSack(deps[i][j])
+					pkgs[i]=tmpsack.returnNewestByNameArch()
+
+		return pkgs
+
+
 filename=""
 errval=0
 parser = OptionParser()
@@ -68,81 +129,23 @@ installnew = opt.installnew
 rpmdir = opt.dir or "."
 
 
-ts = rpmUtils.transaction.initReadOnlyTransaction()
-yb = yum.YumBase()
-yb.setCacheDir()
+checker = ConsistancyChecker(repolist)
 
-if len(repolist) > 0:
-	conrepos=[]
-	for i in yb.repos.findRepos("*"):
-		conrepos.append(i.getAttribute("id"))
+testsack = checker.buildTestSack(filenames)
 
-	yb.repos.disableRepo('*')
+if opt.newest:
+	testsack = checker.getNewest()
 
-	for repo in repolist:
-		if repo not in conrepos:
-			r = repo.split(',',1)
-			newrepo = yum.yumRepo.YumRepository(r[0])
-			newrepo.metadata_expire = 0
-			if len(r) == 2:
-				#newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
-				newrepo.baseurl=r[1]
-			newrepo.timestamp_check = False
-			yb.repos.add(newrepo)
-	
-		yb.repos.enableRepo(repo)
+deps = checker.getDeps(testsack)
 
-yb.pkgSack = yb.repos.populateSack(which='enabled')
-
-pkgobjlist=dict()
-for i in yb.pkgSack:
-	pkgobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
+pkgs=checker.missingDeps(deps,testsack)
 
 
-## read the rpms from a file
-testsack = yum.packageSack.PackageSack()
-
-for filename in filenames:
-	rpmlist = parsePkgFile(filename)
-	rpmobjlist = getPackageList(rpmlist,pkgobjlist)
-	for i in rpmobjlist:
-		testsack.addPackage(i)
-
-outputsack = yum.packageSack.PackageSack()
-try:
-	if opt.newest:
-		pkgset=testsack.returnNewestByNameArch()
-		deps = yb.findDeps(pkgset)
-		for i in pkgset:
-			outputsack.addPackage(i)
-	else:
-		deps = yb.findDeps(testsack.returnPackages())
-		outputsacksack=testsack
-except Exception , e:
-	print e
-	sys.exit(0)
-
-
-pkgs=dict()
-for i in deps.keys():				### packages
-	for j in deps[i].keys():		### requirements for package
-		if deps[i][j] == []:		### no requirements
-			continue
-
-		for k in deps[i][j]:		### potential resolutions for requirements
-			if outputsack.searchPO(k):
-				break
-		else:
-			pkgs["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=["%s-%s-%s.%s"%(m.name, m.version, m.release,m.arch) for m in deps[i][j]]
-			errval=1
-
-if errval !=0:
-	print "%s packages need attention"%(len(pkgs))
-	#print "\n".join(pkgs.keys())
-	for i in pkgs.keys():
-		print "%s requires one of:"%(i)
-		print "\t" + "\n\t".join(pkgs[i])
-		#print i+"="+ str(pkgs[i])
+print "%s packages need attention"%(len(pkgs))
+for i in pkgs.keys():
+	print "%s requires missing pkgs:"%(i)
+	for j in pkgs[i]:
+		print "\t%s-%s-%s.%s"%(j.name, j.version, j.release,j.arch)
 
 
 sys.exit(errval)
