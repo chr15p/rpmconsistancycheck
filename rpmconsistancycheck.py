@@ -31,7 +31,7 @@ class ConsistancyChecker:
 		if len(repolist) > 0:
 			self.yb.repos.disableRepo('*')
 			for repo in repolist:
-				addRepos(self.yb,repo)
+				self.addRepos(repo)
 
 		self.yb.pkgSack = self.yb.repos.populateSack(which='enabled')
 		self.repoobjlist=dict()
@@ -138,7 +138,7 @@ if opt.newest:
 
 deps = checker.getDeps(testsack)
 
-pkgs=checker.missingDeps(deps,testsack)
+pkgs = checker.missingDeps(deps,testsack)
 
 
 print "%s packages need attention"%(len(pkgs))
