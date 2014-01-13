@@ -74,6 +74,7 @@ class ConsistancyChecker:
 		for line in open(filename):
 			pkgname=line.rstrip('\n')
 			if pkgname == "": continue
+			if pkgname[0] == "#": continue
 
 			if pkgname[-4:] == ".rpm":
 				pkglist.append(pkgname[:-4])
