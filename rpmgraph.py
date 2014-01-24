@@ -18,6 +18,7 @@
 import os
 import sys
 import yum
+import xmlrpclib
 import rpmUtils.transaction
 from rpmUtils.miscutils import splitFilename
 from optparse import OptionParser
@@ -144,8 +145,8 @@ key = client.auth.login(SATELLITE_LOGIN, SATELLITE_PASSWORD)
 erratalist=client.errata.listPackages(client,errata)
 
 checker = ConsistancyChecker(repolist)
-erratasack = checker.buildTestSackFromList(["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch) for i in erratalist])
-deps = checker.getDeps(testsack)
+erratasack = checker.buildTestSackFromList(["%s-%s-%s.%s"%(i["name"], i["version"], i["release"],i["arch-label"]) for i in erratalist])
+deps = checker.getDeps(erratasack)
 
 depsack = yum.packageSack.PackageSack()
 for i in deps.keys():               ### packages
@@ -155,16 +156,16 @@ for i in deps.keys():               ### packages
 		for k in deps[i][j]: 
 			depsack.addPackage(obj)
 
-errata=[]
+errata=dict()
 newlist = depsack.returnNewestByNameArch()
 for i in newlist:
 	(name, ver, rel, epoch, arch ) = rpm.miscutils.splitFilename(i)
-	pkgid = client.packages.findByNvrea(key,name,ver, rel, epoch,arch)
-	errarr=client.packages.listProvidingErrata(key,pkgid)
-	errata[errarr[0]["advisory"]]=1
+	pkg = client.packages.findByNvrea(key,i.name,i.ver, i.rel, i.epoch,i.arch)
+	errarr=client.packages.listProvidingErrata(key,pkg["id"])
+	errata[errarr[0]["advisory"]]=pkg[0]["name"]
 
 
 for i in errata.keys():
-	print i
+	print i + " ("+ errata[i] +")"
 
 sys.exit(errval)
