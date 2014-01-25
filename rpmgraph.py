@@ -128,7 +128,7 @@ class ConsistancyChecker:
 filename=""
 errval=0
 parser = OptionParser()
-parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='name of errata to check')
+parser.add_option("-e", "--errata", action="store", default=None, dest="errata", help='name of errata to check')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
 
 (opt,args) = parser.parse_args()
@@ -136,16 +136,16 @@ errata = opt.errata or sys.exit(1)
 repolist = opt.repolist or []
 
 
-SATELLITE_URL = "http://satellite.example.com/rpc/api"
-SATELLITE_LOGIN = "username"
-SATELLITE_PASSWORD = "password"
+SATELLITE_URL = "https://rhn.redhat.com/rpc/api"
+SATELLITE_LOGIN = ""
+SATELLITE_PASSWORD = ""
 client = xmlrpclib.Server(SATELLITE_URL, verbose=0)
 key = client.auth.login(SATELLITE_LOGIN, SATELLITE_PASSWORD)
 
-erratalist=client.errata.listPackages(client,errata)
-
+print errata
+erratalist=client.errata.listPackages(key,errata)
 checker = ConsistancyChecker(repolist)
-erratasack = checker.buildTestSackFromList(["%s-%s-%s.%s"%(i["name"], i["version"], i["release"],i["arch-label"]) for i in erratalist])
+erratasack = checker.buildTestSackFromList(["%s-%s-%s.%s"%(i["package_name"], i["package_version"], i["package_release"],i["package_arch_label"]) for i in erratalist])
 deps = checker.getDeps(erratasack)
 
 depsack = yum.packageSack.PackageSack()
