@@ -33,12 +33,15 @@ class ConsistancyChecker:
 			for repo in repolist:
 				self.addRepos(repo)
 
+		self.errata = dict()
+
 		self.yb.pkgSack = self.yb.repos.populateSack(which='enabled')
 		self.repoobjlist=dict()
 		for i in self.yb.pkgSack:
 			self.repoobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
 
 		self.testsack = yum.packageSack.PackageSack()
+
 
 	def getTestSack(self):
 		return self.testsack
@@ -69,6 +72,20 @@ class ConsistancyChecker:
 		return self.testsack
 
 
+	def addErrataToTestSack(self,filelist):
+		for filename in filelist:
+			self.errata[filename] = []
+			rpmlist = self.parsePkgFile(filename)
+			for i in rpmlist:
+				obj = self.repoobjlist.get(i,"")
+				if obj != "":
+					self.errata[filename].append(obj)
+					self.testsack.addPackage(obj)
+				else:
+					print "NOT FOUND IN REPOs: " + i
+		return self.errata
+
+
 	def parsePkgFile(self,filename):
 		pkglist = []
 		for line in open(filename):
@@ -82,11 +99,14 @@ class ConsistancyChecker:
 				pkglist.append(pkgname)
 		return pkglist
 
+
 	def removeOld(self):
 		self.testsack = self.testsack.returnNewestByNameArch()
 
+
 	def getNewest(self):
 		return yum.packageSack.ListPackageSack(Objlist=self.testsack.returnNewestByNameArch())
+
 
 	def getDeps(self,sack):
 		try:
@@ -97,7 +117,7 @@ class ConsistancyChecker:
 
 		return deps
 
-	def missingDeps(self,deps,outputsack):
+	def missingDeps(self,deps,outputsack,newest):
 		pkgs=dict()
 		for i in deps.keys():				### packages
 			for j in deps[i].keys():		### requirements for package
@@ -108,16 +128,20 @@ class ConsistancyChecker:
 					if outputsack.searchPO(k):
 						break
 				else:
-					tmpsack = yum.packageSack.ListPackageSack(deps[i][j])
-					pkgs[i]=tmpsack.returnNewestByNameArch()
-
+					if newest:
+						tmpsack = yum.packageSack.ListPackageSack(deps[i][j])
+						pkgs[i]=tmpsack.returnNewestByNameArch()
+					else:
+						pkgs[i]=deps[i][j]
 		return pkgs
+
 
 
 filename=""
 errval=0
 parser = OptionParser()
 parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
+parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of package names to check and report on')
 parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
 parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
 parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
@@ -125,8 +149,11 @@ parser.add_option("-n", "--newest", default=None, action="store_const",const=1, 
 
 (opt,args) = parser.parse_args()
 filenames = opt.filename or sys.exit(1)
+errata = opt.errata or []
 repolist = opt.repolist or []
 installnew = opt.installnew 
+newest = opt.newest 
+
 rpmdir = opt.dir or "."
 
 
@@ -134,19 +161,34 @@ checker = ConsistancyChecker(repolist)
 
 testsack = checker.buildTestSack(filenames)
 
+checker.addErrataToTestSack(errata)
+
 if opt.newest:
 	testsack = checker.getNewest()
 
 deps = checker.getDeps(testsack)
 
-pkgs = checker.missingDeps(deps,testsack)
+pkgs = checker.missingDeps(deps,testsack,newest)
 
+if errata:
+	errpkgs=dict()
+	for i in checker.errata.keys():
+		for j in checker.errata[i]:
+			errpkgs[j.name]=i
 
-print "%s packages need attention"%(len(pkgs))
-for i in pkgs.keys():
-	print "%s requires missing pkgs:"%(i)
-	for j in pkgs[i]:
-		print "\t%s-%s-%s.%s"%(j.name, j.version, j.release,j.arch)
+	for i in pkgs.keys():
+		if errpkgs.get(i):
+			print i + " in errata "+ errpkgs[i.name]
+		continue
+		for j in pkgs[i]:
+			if errpkgs.get(j.name):
+				print i.name + " in errata "+ errpkgs[j.name]
 
+else:
+	print "%s packages need attention"%(len(pkgs))
+	for i in pkgs.keys():
+		print "%s requires missing pkgs:"%(i)
+		for j in pkgs[i]:
+			print "\t%s-%s-%s.%s"%(j.name, j.version, j.release,j.arch)
 
 sys.exit(errval)
