@@ -139,10 +139,10 @@ class ConsistancyChecker:
 
 
 	def filterForErrataOnly(self,pkgs):
-		errata = set([item for i in self.errata.values() for j in i])
+		errata = set([item for i in self.errata.values() for item in i])
 		outpkgs=dict()
 		for i in pkgs:
-			pkgset=ser(pkgs[i])
+			pkgset=set(pkgs[i])
 			pkgset.add(i)
 			if errata.intersection(pkgset) != set([]):
 				outpkgs[i]=pkgs[i]
