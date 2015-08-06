@@ -92,7 +92,7 @@ class ConsistancyChecker:
 	def parsePkgFile(self,filename):
 		pkglist = []
 		for line in open(filename):
-			pkgname=line.rstrip('\n')
+			pkgname=line.rstrip(' \n')
 			if pkgname == "": continue
 			if pkgname[0] == "#": continue
 
