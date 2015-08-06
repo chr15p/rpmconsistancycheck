@@ -34,10 +34,12 @@ class ConsistancyChecker:
 				self.addRepos(repo)
 
 		self.errata = dict()
+		self.requires = dict()
 
 		self.yb.pkgSack = self.yb.repos.populateSack(which='enabled')
 		self.repoobjlist=dict()
 		for i in self.yb.pkgSack:
+			#print "adding %s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)
 			self.repoobjlist["%s-%s-%s.%s"%(i.name, i.version, i.release,i.arch)]=i
 
 		self.testsack = yum.packageSack.PackageSack()
@@ -52,6 +54,7 @@ class ConsistancyChecker:
 			newrepo = yum.yumRepo.YumRepository(r[0])
 			newrepo.metadata_expire = 0
 			if len(r) == 2:
+				print "adding repo "+r[0] +" from "+r[1]
 				#newrepo.baseurl="file:///home/chrisp/projects/rpmconsistancycheck/19/fedora-clone/"
 				newrepo.baseurl=r[1]
 			newrepo.timestamp_check = False
@@ -118,7 +121,6 @@ class ConsistancyChecker:
 		return deps
 
 	def missingDeps(self,deps,outputsack,newest):
-		pkgs=dict()
 		for i in deps.keys():				### packages
 			for j in deps[i].keys():		### requirements for package
 				if deps[i][j] == []:		### no requirements
@@ -130,65 +132,64 @@ class ConsistancyChecker:
 				else:
 					if newest:
 						tmpsack = yum.packageSack.ListPackageSack(deps[i][j])
-						pkgs[i]=tmpsack.returnNewestByNameArch()
+						self.requires[i]=tmpsack.returnNewestByNameArch()
 					else:
-						pkgs[i]=deps[i][j]
-		return pkgs
+						self.requires[i]=deps[i][j]
+		return self.requires
 
 
+	def filterForErrataOnly(self,pkgs):
+		errata = set([item for i in self.errata.values() for j in i])
+		outpkgs=dict()
+		for i in pkgs:
+			pkgset=ser(pkgs[i])
+			pkgset.add(i)
+			if errata.intersection(pkgset) != set([]):
+				outpkgs[i]=pkgs[i]
 
-filename=""
-errval=0
-parser = OptionParser()
-parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
-parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of package names to check and report on')
-parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
-parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
-parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
-parser.add_option("-n", "--newest", default=None, action="store_const",const=1, dest="newest", help='only check newest versions of packages')
-
-(opt,args) = parser.parse_args()
-filenames = opt.filename or sys.exit(1)
-errata = opt.errata or []
-repolist = opt.repolist or []
-installnew = opt.installnew 
-newest = opt.newest 
-
-rpmdir = opt.dir or "."
+		return outpkgs
 
 
-checker = ConsistancyChecker(repolist)
+if __name__ == "__main__":
+	errval=0
+	parser = OptionParser()
+	parser.add_option("-f", "--file", action="append", default=None, dest="filename", help='file containing list of package names to check')
+	parser.add_option("-e", "--errata", action="append", default=None, dest="errata", help='file containing list of package names to check and report on')
+	parser.add_option("-d", "--dir", default=None, dest="dir", help='dir containing errata rpms')
+	parser.add_option("-r", "--repo", action="append", default=None, dest="repolist", help='id of a repo to check against')
+	parser.add_option("-i", "--install", default=None, action="store_const",const=1, dest="installnew", help='install errata packages not already installed')
+	parser.add_option("-n", "--newest", default=None, action="store_const",const=1, dest="newest", help='only check newest versions of packages')
 
-testsack = checker.buildTestSack(filenames)
+	(opt,args) = parser.parse_args()
+	filenames = opt.filename or sys.exit(1)
+	errata = opt.errata or []
+	repolist = opt.repolist or []
+	installnew = opt.installnew 
+	newest = opt.newest 
 
-checker.addErrataToTestSack(errata)
+	rpmdir = opt.dir or "."
 
-if opt.newest:
-	testsack = checker.getNewest()
 
-deps = checker.getDeps(testsack)
+	checker = ConsistancyChecker(repolist)
 
-pkgs = checker.missingDeps(deps,testsack,newest)
+	testsack = checker.buildTestSack(filenames)
 
-if errata:
-	errpkgs=dict()
-	for i in checker.errata.keys():
-		for j in checker.errata[i]:
-			errpkgs[j.name]=i
+	checker.addErrataToTestSack(errata)
 
-	for i in pkgs.keys():
-		if errpkgs.get(i):
-			print i + " in errata "+ errpkgs[i.name]
-		continue
-		for j in pkgs[i]:
-			if errpkgs.get(j.name):
-				print i.name + " in errata "+ errpkgs[j.name]
+	if opt.newest:
+		testsack = checker.getNewest()
 
-else:
+	deps = checker.getDeps(testsack)
+
+	pkgs = checker.missingDeps(deps,testsack,newest)
+
+	if errata:
+		pkgs = checker.filterForErrataOnly(pkgs) 
+
 	print "%s packages need attention"%(len(pkgs))
 	for i in pkgs.keys():
 		print "%s requires missing pkgs:"%(i)
 		for j in pkgs[i]:
 			print "\t%s-%s-%s.%s"%(j.name, j.version, j.release,j.arch)
 
-sys.exit(errval)
+	sys.exit(errval)
